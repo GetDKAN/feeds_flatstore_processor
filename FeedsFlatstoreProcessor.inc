@@ -213,8 +213,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
    * Return the data table name for this feed.
    */
   protected function tableName(FeedsSource $source) {
-    // TODO: Tie this to importer_id + feed_nid.
-    return 'feeds_datastore_' . $source->feed_nid;
+    return feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
   }
 
   function tableSchema($parser_result) {
@@ -231,16 +230,11 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
    *   can't be created.
    */
   protected function table(FeedsSource $source, $parser_result) {
-    if ($table = data_get_table($this->tableName($source))) {
-      return $table;
+    if ($table = feeds_flatstore_processor_table($source)) {
     }
     else {
-      $schema = $this->tableSchema($parser_result);
-      if ($table = data_create_table($this->tableName($source), $schema)) {
-        return $table;
-      }
+      throw new Exception(t('Could not create data table.'));
     }
-    throw new Exception(t('Could not create data table.'));
   }
 
   /**

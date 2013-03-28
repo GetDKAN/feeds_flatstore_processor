@@ -21,14 +21,101 @@ function feeds_flatstore_processor_ctools_plugin_type() {
 /**
  * Implements hook_feeds_after_parse().
  */
-function hook_feeds_after_parse(FeedsSource $source, FeedsParserResult $result) {
+function feeds_flatstore_processor_feeds_after_parse(FeedsSource $source, FeedsParserResult $result) {
   // Creates table for feed source if it doesn't exist.
 }
 
 /**
- * Recognize columns of data in the file (all except xls)
+ * Implements hook_enable().
  */
-function feeds_flatstore_find_columns($filepath, $separator = ",", $limit = 500) {
+function feeds_flatstore_processor_enable() {
+  // Clears ctools cache to avoid missing plugin error message.
+  cache_clear_all('plugins:feeds:plugins', 'cache');
+}
+
+// TODO: Move to library.
+
+
+function feeds_flatstore_processor_table_name($source_id, $entity_id, $prefix = 'feeds_datastore') {
+  return $prefix . '_' . $source_id . '_' . $entity_id;
+}
+
+function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
+  $table_name = feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
+  // If table exists, just return it.
+  if ($table = data_get_table($table_name)) {
+    return $table;
+  }
+  else {
+    $title = '';
+    $title_result = db_select('node', 'n')
+      ->fields('n', array('title'))
+      ->condition('nid', $source->feed_nid,'=')
+      ->execute()
+      ->fetchAssoc();
+    if (isset($title_result['title'])) {
+      $title = $title_result['title'];
+    }
+    // If this is a CSV file, get more info.
+    if ($source->importer->parser instanceof FeedsCSVParser) {
+      $fetcher = get_class($source->importer->fetcher);
+      $source = $source->config[$fetcher]['source'];
+      if ($source) {
+        // This gives us a better range of results for finding data types.
+        $example_data = feeds_flatstore_processor_get_csv_results($source);
+      }
+      else {
+        $example_data = $parser_result;
+      }
+      $types = feeds_flatstore_processor_find_columns($example_data);
+    }
+    else {
+      $types = feeds_flatstore_processor_find_columns($parser_results);
+    }
+    $schema = feeds_flatstore_processsor_base_schema();
+    $field_schema = data_build_schema($types);
+    $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
+
+    $table = data_create_table($table_name, $schema, $title);
+    return $table;
+  }
+}
+
+function feeds_flatstore_processsor_base_schema() {
+    return array(
+      'fields' => array(
+        'id' => array(
+          'type' => 'serial',
+          'size' => 'normal',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'timestamp' => array(
+          'description' => 'The Unix timestamp for the data.',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => FALSE,
+        ),
+      ),
+      'indexes' => array(
+        'id' => array('id'),
+        'timestamp' => array('timestamp'),
+       ),
+       'primary key' => array(
+         '0' => 'id',
+       ),
+    );
+}
+
+
+/**
+ * Opens csv file and grabs set amount of rows.
+ * This is used for finding database schema since the results of a parsed
+ * feeds result will be only 50 rows by default. This is an in relatively
+ * inexpensive operation that should only be run once per feed source.
+ */
+function feeds_flatstore_processor_get_csv_results($filepath, $separator = ",", $limit = 1000) {
+  dpm('filepath: ' . $filepath);
   static $size = 10000;
   $handle = fopen($filepath, 'r');
   if ($handle === FALSE) {
@@ -36,17 +123,28 @@ function feeds_flatstore_find_columns($filepath, $separator = ",", $limit = 500)
     return FALSE;
   }
 
-  $result['data'] = array();
+  $parsed_results = array();
   $rowcount = 0;
   while (($data = fgetcsv($handle, $size, ',')) !== FALSE) {
-    $result['data'][] = $data;
+    $result[] = $data;
     $rowcount++;
     if ($rowcount > $limit) {
       break;
     }
   }
   fclose($handle);
-  $colcount = count($result['data'][0]);
+  return $result;
+}
+
+/**
+ * Finds the schema type for values in an array.
+ */
+function feeds_flatstore_processor_find_columns($parsed_results, $headers = array()) {
+  $colcount = count($parsed_results[0]);
+  $rowcount = count($parsed_results);
+  if (!$headers) {
+    $headers = $parsed_results[0];
+  }
 
   for ($j = 0; $j < $colcount; $j++) {
     $type_counter = array(
@@ -59,31 +157,31 @@ function feeds_flatstore_find_columns($filepath, $separator = ",", $limit = 500)
       'varchar' => 0,
     );
     for ($i = 1; $i < $rowcount; $i++) {
-      if ($result['data'][$i][$j] == '') {
+      if ($parsed_results[$i][$j] == '') {
         continue;
       }
       // Int.
-      if (preg_match('/^-?\d+$/', $result['data'][$i][$j])) {
+      if (preg_match('/^-?\d+$/', $parsed_results[$i][$j])) {
         $result['type'][$j] = 'int';
         $type_counter['int']++;
       }
       // Float.
-      elseif (preg_match('/^-?(?:\d+|\d*\.\d+)$/', trim($result['data'][$i][$j]))) {
+      elseif (preg_match('/^-?(?:\d+|\d*\.\d+)$/', trim($parsed_results[$i][$j]))) {
         $result['type'][$j] = 'float';
         $type_counter['float']++;
       }
       // Double.
-      elseif (preg_match('/[^0-9][0-9]+(\.[0-9]+)?[^0-9]/', trim($result['data'][$i][$j]))) {
+      elseif (preg_match('/[^0-9][0-9]+(\.[0-9]+)?[^0-9]/', trim($parsed_results[$i][$j]))) {
         $result['type'][$j] = 'double';
         $type_counter['double']++;
       }
       // Datetime.
-      elseif (preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}:\d{2}/", trim($result['data'][$i][$j])) ||
-              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}:\d{2}/", trim($result['data'][$i][$j])) ||
-              preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}/", trim($result['data'][$i][$j])) ||
-              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}/", trim($result['data'][$i][$j])) ||
-              preg_match("/\d{4}\/\d{2}\/\d{2}/", trim($result['data'][$i][$j])) ||
-              preg_match("/\d{2}\.\d{2}\.\d{4}/", trim($result['data'][$i][$j]))) {
+      elseif (preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
+              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
+              preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
+              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
+              preg_match("/\d{4}\/\d{2}\/\d{2}/", trim($parsed_results[$i][$j])) ||
+              preg_match("/\d{2}\.\d{2}\.\d{4}/", trim($parsed_results[$i][$j]))) {
         $result['type'][$j] = 'datetime';
         $type_counter['datetime']++;
       }
@@ -93,8 +191,9 @@ function feeds_flatstore_find_columns($filepath, $separator = ",", $limit = 500)
       }
     }
     $max = max($type_counter);
-    if ($max == 0)
+    if ($max == 0) {
       $result['type'][$j] = 'varchar';
+    }
     else {
       foreach ($type_counter as $key => $value) {
         if ($value == $max) {
@@ -103,7 +202,10 @@ function feeds_flatstore_find_columns($filepath, $separator = ",", $limit = 500)
       }
     }
   }
-  return $result;
+  foreach ($headers as $key => $header) {
+    $schema[$header] = $result['type'][$key];
+  }
+  return $schema;
 }
 
 

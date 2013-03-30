@@ -12,9 +12,24 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
 
   // We aren't creating or updating entities, just table records.
   // So these are empty.
+  /**
+   * Modifies entity type.
+   */
   public function entityType() {}
+
+  /**
+   * Modifies new entity.
+   */
   protected function newEntity(FeedsSource $source) {}
+
+  /**
+   * Modifies entity save.
+   */
   protected function entitySave($entity) {}
+
+  /**
+   * Modifies entity deletion.
+   */
   protected function entityDeleteMultiple($entity_ids) {}
 
   /**
@@ -29,7 +44,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
     $table = $this->table($source, $parser_result);
 
     while ($data = $parser_result->shiftItem()) {
-      foreach($data as $label => $value) {
+      foreach ($data as $label => $value) {
         $cleaned_data[data_safe_name($label)] = $value;
       }
       $cleaned_data['feed_entity_id'] = $this->feed_nid;
@@ -118,14 +133,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
       return;
     }
     if (strpos($target_element, '.')) {
-      /**
-      Add field in FeedsDataHandler format.
 
-      This is the tricky part, FeedsDataHandler expects an *array* of records
-      at #[joined_table_name]. We need to iterate over the $value that has
-      been mapped to this element and create a record array from each of
-      them.
-      */
       list($table, $field) = explode('.', $target_element);
 
       $values = array();
@@ -155,7 +163,6 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
 
   /**
    * Iterate through unique targets and try to load existing records.
-   * Return id for the first match.
    */
   protected function existingItemId(FeedsParserResult $parser_result, FeedsSource $source) {
     foreach ($this->uniqueTargets($source, $parser_result) as $target => $value) {
@@ -172,7 +179,8 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
   public function configDefaults() {
     return array(
       'update_existing' => FEEDS_SKIP_EXISTING,
-      'expire' => FEEDS_EXPIRE_NEVER, // Don't expire items by default.
+       // Don't expire items by default.
+      'expire' => FEEDS_EXPIRE_NEVER,
       'mappings' => array(),
       'delete_with_source' => FALSE,
     );
@@ -182,12 +190,15 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
    * Override parent::configForm().
    */
   public function configForm(&$form_state) {
-    $period = drupal_map_assoc(array(FEEDS_EXPIRE_NEVER, 3600, 10800, 21600, 43200, 86400, 259200, 604800, 604800 * 4, 604800 * 12, 604800 * 24, 31536000), 'feeds_format_expire');
+    $period = drupal_map_assoc(array(
+        FEEDS_EXPIRE_NEVER, 3600, 10800, 21600, 43200, 86400, 259200, 604800, 604800 * 4, 604800 * 12, 604800 * 24, 31536000,
+      ),
+      'feeds_format_expire');
     $form['expire'] = array(
       '#type' => 'select',
       '#title' => t('Expire items'),
       '#options' => $period,
-      '#description' => t('Select after how much time data records should be deleted. The timestamp target value will be used for determining the item\'s age, see Mapping settings.'),
+      '#description' => t("Select after how much time data records should be deleted. The timestamp target value will be used for determining the item's age, see Mapping settings."),
       '#default_value' => $this->config['expire'],
     );
     $form['update_existing'] = array(
@@ -216,21 +227,15 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
     return feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
   }
 
-  function tableSchema($parser_result) {
-
-  }
-
   /**
    * Return the data table for this feed.
    *
    * @throws Exception $e
    *   Throws this exception if a table cannot be found and cannot be created.
-   *
-   * @todo Make *Data module* throw exception when table can't be found or
-   *   can't be created.
    */
   protected function table(FeedsSource $source, $parser_result) {
-    if ($table = feeds_flatstore_processor_table($source)) {
+    if ($table = feeds_flatstore_processor_table($source, $parser_result)) {
+      return $table;
     }
     else {
       throw new Exception(t('Could not create data table.'));
@@ -248,25 +253,19 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
 
 
   /**
-   * At some point we might want to determine best field type in
-   * the database by the type of content in the first row of each.
-   * This is difficult because PHP thinks everything is a string.
+   * Finds appropriate schema data types for each row.
    */
-  function dataSchema($first_row) {
-    foreach ($first_row as $field => $data) {
-      // Default to bigtext for now.
-      $data_schema[$field] = 'bigtext';
-    }
-    return $data_schema;
+  public function dataSchema($parsed_results) {
+    return feeds_flatstore_processor_find_columns($parsed_results);
   }
 
   /**
    * Creates full schema from baseSchema and an array.
    *
-   *  @param array data
-   *  Arrway with keys for each desired row.
+   * @param array $data
+   *   Array with keys for each desired row.
    */
-  function fullSchema($data) {
+  public function fullSchema($data) {
     $base = $this->baseSchema();
     $data_schema = data_build_schema($data);
     $base['fields'] = array_merge($data_schema['fields'], $base['fields']);
@@ -295,24 +294,26 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
       'indexes' => array(
         'id' => array('id'),
         'timestamp' => array('timestamp'),
-       ),
-       'primary key' => array(
-         '0' => 'id',
-       ),
+      ),
+      'primary key' => array(
+        '0' => 'id',
+      ),
     );
   }
 
-   // TODO: delete.
-  function sourceForm($source_config) {
+  /**
+   * Source form to delete.
+   */
+  public function sourceForm($source_config) {
     $form = array();
     $output = '';
     $form['#weight'] = -10;
-    $nid =  arg(1);
+    $nid = arg(1);
     // If we have a record for table settings.
-    if (false) {
+    if (FALSE) {
       $config = ctools_export_load_object('feeds_importer', 'conditions', array('id' => $this->id));
       $fetcher = $config[$this->id]->config['fetcher']['plugin_key'];
-      if ($record = db_query("SELECT imported, config, state, fetcher_result FROM {feeds_source} WHERE id = :id AND feed_nid = :nid", array(':id' => $this->id, ':nid' => $nid))->fetchObject    ()) {
+      if ($record = db_query("SELECT imported, config, state, fetcher_result FROM {feeds_source} WHERE id = :id AND feed_nid = :nid", array(':id' => $this->id, ':nid' => $nid))->fetchObject()) {
         $source_config = unserialize($record->config);
         $file_source = $source_config[$fetcher]['source'];
         if ($fetcher == 'FeedsHTTPFetcher') {
@@ -324,7 +325,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
           $rows = array();
           $header = array(
             t('Data name'),
-            t('Data type')
+            t('Data type'),
           );
           $data_names = explode(',', $headers);
           foreach ($data_names as $name) {
@@ -341,14 +342,6 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
     }
     else {
     }
-    //var_dump($source);
-   // $sources = $uniques = array();
-    //foreach ($mappings as $mapping) {
-     // $sources[] = check_plain($mapping['source']);
-      //if (!empty($mapping['unique'])) {
-      //  $uniques[] = check_plain($mapping['source']);
-     // }
-    //}
 
     $form['help'] = array(
       '#prefix' => '<div class="help">',

@@ -1,8 +1,8 @@
 <?php
 
 /**
- * @File
- *  Creates Feeds fetcher for storing Feeds results in a unique tables.
+ * @file
+ * Creates Feeds fetcher for storing Feeds results in a unique tables.
  */
 
 /**
@@ -23,23 +23,19 @@ function feeds_flatstore_processor_ctools_plugin_type() {
  */
 function feeds_flatstore_processor_feeds_after_parse(FeedsSource $source, FeedsParserResult $result) {
   // Creates table for feed source if it doesn't exist.
+  feeds_flatstore_processor_table($source, $result);
 }
 
 /**
- * Implements hook_enable().
+ * Creates table name based on source id and entity id.
  */
-function feeds_flatstore_processor_enable() {
-  // Clears ctools cache to avoid missing plugin error message.
-  cache_clear_all('plugins:feeds:plugins', 'cache');
-}
-
-// TODO: Move to library.
-
-
 function feeds_flatstore_processor_table_name($source_id, $entity_id, $prefix = 'feeds_datastore') {
   return $prefix . '_' . $source_id . '_' . $entity_id;
 }
 
+/**
+ * Retrieves table definition or creates one if table does not exist.
+ */
 function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
   $table_name = feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
   // If table exists, just return it.
@@ -50,7 +46,7 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     $title = '';
     $title_result = db_select('node', 'n')
       ->fields('n', array('title'))
-      ->condition('nid', $source->feed_nid,'=')
+      ->condition('nid', $source->feed_nid, '=')
       ->execute()
       ->fetchAssoc();
     if (isset($title_result['title'])) {
@@ -81,41 +77,44 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
   }
 }
 
+/**
+ * Creates base schema for flatstore table.
+ */
 function feeds_flatstore_processsor_base_schema() {
-    return array(
-      'fields' => array(
-        'id' => array(
-          'type' => 'serial',
-          'size' => 'normal',
-          'unsigned' => TRUE,
-          'not null' => TRUE,
-        ),
-        'timestamp' => array(
-          'description' => 'The Unix timestamp for the data.',
-          'type' => 'int',
-          'unsigned' => TRUE,
-          'not null' => FALSE,
-        ),
+  return array(
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'size' => 'normal',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
       ),
-      'indexes' => array(
-        'id' => array('id'),
-        'timestamp' => array('timestamp'),
-       ),
-       'primary key' => array(
-         '0' => 'id',
-       ),
-    );
+      'timestamp' => array(
+        'description' => 'The Unix timestamp for the data.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ),
+    ),
+    'indexes' => array(
+      'id' => array('id'),
+      'timestamp' => array('timestamp'),
+    ),
+    'primary key' => array(
+      '0' => 'id',
+    ),
+  );
 }
 
 
 /**
  * Opens csv file and grabs set amount of rows.
+ *
  * This is used for finding database schema since the results of a parsed
  * feeds result will be only 50 rows by default. This is an in relatively
  * inexpensive operation that should only be run once per feed source.
  */
 function feeds_flatstore_processor_get_csv_results($filepath, $separator = ",", $limit = 1000) {
-  dpm('filepath: ' . $filepath);
   static $size = 10000;
   $handle = fopen($filepath, 'r');
   if ($handle === FALSE) {

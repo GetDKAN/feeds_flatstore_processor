@@ -52,18 +52,8 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
         $cleaned_data['timestamp'] = FEEDS_REQUEST_TIME;
       }
 
-      // Only save if this item is not expired.
-      if ($expiry_time != FEEDS_EXPIRE_NEVER && $data['timestamp'] < (FEEDS_REQUEST_TIME - $expiry_time)) {
-        continue;
-      }
-      $id = $this->existingItemId($parser_result, $source);
-      if ($id != FALSE || $this->config['update_existing']) {
-        $data['id'] = $id;
-        $this->handler($source)->update($cleaned_data, 'id');
-      }
-      else {
-        $this->handler($source)->save($cleaned_data);
-      }
+      // We only save, never update, since there is only a flat table.
+      $this->handler($source)->save($cleaned_data);
     }
 
   }
@@ -88,89 +78,30 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
    */
   public function clear(FeedsSource $source) {
     $table_name = $this->tableName($source);
-    $result = db_truncate($table_name)->execute();
-    if ($result) {
-      drupal_set_message('All items have been deleted.');
+    $count = $this->itemCount($source);
+    if ($count) {
+      db_truncate($table_name)->execute();
+      drupal_set_message(t('@count items have been deleted.', array('@count' => $count)));
     }
     else {
       drupal_set_message('There were no items to delete.');
     }
   }
 
-  /**
-   * Implement expire().
-   */
-  public function expire($time = NULL) {
-    if ($time === NULL) {
-      $time = $this->expiryTime();
-    }
-    if ($time == FEEDS_EXPIRE_NEVER) {
-      return FEEDS_BATCH_COMPLETE;
-    }
-    $clause = array(
-      'timestamp' => array(
-        '<',
-        FEEDS_REQUEST_TIME - $time,
-      ),
-    );
-    $num = $this->handler($source)->delete($clause);
-    drupal_set_message(format_plural($num, 'Expired @number record from @table.', 'Expired @number records from @table.', array('@number' => $num, '@table' => $this->tableName())));
-    return FEEDS_BATCH_COMPLETE;
-  }
-
-  /**
-   * Return expiry time.
-   */
-  public function expiryTime() {
-    return $this->config['expire'];
-  }
-
-  /**
-   * Set target element, bring element in a FeedsDataHandler format.
-   */
-  public function setTargetElement(FeedsSource $source, $target_item, $target_element, $value) {
-    if (empty($value)) {
-      return;
-    }
-    if (strpos($target_element, '.')) {
-
-      list($table, $field) = explode('.', $target_element);
-
-      $values = array();
-      $value = is_array($value) ? $value : array($value);
-      foreach ($value as $v) {
-        // Create a record array.
-        $values[] = array(
-          $field => $v,
-        );
-      }
-      if (is_array($target_item["#$table"])) {
-        $target_item["#$table"] = array_merge($target_item["#$table"], $values);
-      }
-      else {
-        $target_item["#$table"] = $values;
-      }
-    }
-    else {
-      if (is_array($target_item[$target_element]) && is_array($value)) {
-        $target_item[$target_element] = array_merge($target_item[$target_element], $value);
-      }
-      else {
-        $target_item[$target_element] = $value;
-      }
-    }
-  }
-
-  /**
-   * Iterate through unique targets and try to load existing records.
-   */
-  protected function existingItemId(FeedsParserResult $parser_result, FeedsSource $source) {
-    foreach ($this->uniqueTargets($source, $parser_result) as $target => $value) {
-      if ($records = $this->handler($source)->load(array('feed_entity_id' => $source->feed_entity_id, $target => $value))) {
-        return $records[0]['id'];
-      }
-    }
-    return FALSE;
+  public function schedule() {
+    $source = feeds_source($this->id, $this->feed_nid);
+    $job = array(
+       'type' => $this->id,
+       'period' => 0,
+       'periodic' => TRUE,
+     );
+     if (FEEDS_EXPIRE_NEVER != $this->processor->expiryTime()) {
+       $job['period'] = 3600;
+       JobScheduler::get('feeds_importer_expire')->set($job);
+     }
+     else {
+       JobScheduler::get('feeds_importer_expire')->remove($job);
+     }
   }
 
   /**
@@ -190,22 +121,10 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
    * Override parent::configForm().
    */
   public function configForm(&$form_state) {
-    $period = drupal_map_assoc(array(
-        FEEDS_EXPIRE_NEVER, 3600, 10800, 21600, 43200, 86400, 259200, 604800, 604800 * 4, 604800 * 12, 604800 * 24, 31536000,
-      ),
-      'feeds_format_expire');
-    $form['expire'] = array(
-      '#type' => 'select',
-      '#title' => t('Expire items'),
-      '#options' => $period,
-      '#description' => t("Select after how much time data records should be deleted. The timestamp target value will be used for determining the item's age, see Mapping settings."),
-      '#default_value' => $this->config['expire'],
-    );
-    $form['update_existing'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Replace existing records'),
-      '#description' => t('If an existing record is found for an imported record, replace it. Existing records will be determined using mappings that are a "unique target".'),
-      '#default_value' => $this->config['update_existing'],
+    $form['no_config'] = array(
+      '#type' => 'item',
+      '#title' => t('No Configuration Options'),
+      '#markup' => t('This processor does not have any configuration options.'),
     );
     return $form;
   }
@@ -214,10 +133,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
    * Reschedule if expiry time changes.
    */
   public function configFormSubmit(&$values) {
-    if ($this->config['expire'] != $values['expire']) {
-      feeds_reschedule($this->id);
-    }
-    parent::configFormSubmit($values);
+    feeds_reschedule($this->id);
   }
 
   /**

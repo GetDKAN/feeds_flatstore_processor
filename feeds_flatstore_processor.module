@@ -19,6 +19,49 @@ function feeds_flatstore_processor_ctools_plugin_type() {
 }
 
 /**
+ * Implements hook_form_alter().
+ */
+function feeds_flatstore_processor_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'feeds_ui_mapping_form') {
+    $form['help'] = array(
+      '#type' => 'item',
+      '#title' => t('No Mapping Options'),
+      '#markup' => t('NOTE: This processor does not have any mapping options. All items in results are saved into rows in table.'),
+    );
+  }
+}
+
+/**
+ * Implements hook_feeds_before_import().
+ */
+function feeds_flatstore_processor_feeds_before_import(FeedsSource $source) {
+  // If the import it complete then we are re-importing.
+  $progress_importing = $source->progressImporting();
+  $count = $source->itemCount();
+  if ($progress_importing == FEEDS_BATCH_COMPLETE && $count) {
+    $table_name = feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
+    db_truncate($table_name)->execute();
+  }
+}
+
+/**
+ * Implements hook_feeds_after_import().
+ */
+function feeds_flatstore_processor_feeds_after_import(FeedsSource $source) {
+  // Unschedule for import if completed. TODO: only if periodic import on.
+  $progress_importing = $source->progressImporting();
+  $count = $source->itemCount();
+  if ($progress_importing == FEEDS_BATCH_COMPLETE && $count) {
+    $table_name = feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
+    $job = array(
+      'type' => $source->id,
+      'id' => $source->feed_nid,
+    );
+//    JobScheduler::get('feeds_source_import')->remove($job);
+  }
+}
+
+/**
  * Implements hook_feeds_after_parse().
  */
 function feeds_flatstore_processor_feeds_after_parse(FeedsSource $source, FeedsParserResult $result) {
@@ -63,10 +106,12 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
       else {
         $example_data = $parser_result;
       }
-      $types = feeds_flatstore_processor_find_columns($example_data);
+      $headers = $example_data[0];
+      unset($example_data[0]);
+      $types = feeds_flatstore_processor_find_columns($example_data, $headers);
     }
     else {
-      $types = feeds_flatstore_processor_find_columns($parser_results);
+      $types = feeds_flatstore_processor_find_columns($parser_result->items);
     }
     $schema = feeds_flatstore_processsor_base_schema();
     $field_schema = data_build_schema($types);
@@ -106,7 +151,6 @@ function feeds_flatstore_processsor_base_schema() {
   );
 }
 
-
 /**
  * Opens csv file and grabs set amount of rows.
  *
@@ -138,72 +182,62 @@ function feeds_flatstore_processor_get_csv_results($filepath, $separator = ",", 
 /**
  * Finds the schema type for values in an array.
  */
-function feeds_flatstore_processor_find_columns($parsed_results, $headers = array()) {
-  $colcount = count($parsed_results[0]);
-  $rowcount = count($parsed_results);
+function feeds_flatstore_processor_find_columns($parsed_result, $headers = array()) {
+  $rowcount = count($parsed_result);
   if (!$headers) {
-    $headers = $parsed_results[0];
+    foreach ($parsed_result[0] as $key => $value) {
+      $headers[$key] = $key;
+    }
   }
+  $colcount = count($headers);
 
-  for ($j = 0; $j < $colcount; $j++) {
-    $type_counter = array(
-      'int' => 0,
-      'text' => 0,
-      'datetime' => 0,
-      'float' => 0,
-      'double' => 0,
-      'geometry' => 0,
-      'varchar' => 0,
-    );
-    for ($i = 1; $i < $rowcount; $i++) {
-      if ($parsed_results[$i][$j] == '') {
+  $type_counter = array();
+  foreach ($parsed_result as $row) {
+    foreach ($row as $key => $value) {
+      if ($value == '') {
         continue;
       }
+      // TODO: Determine if default data sizes are sufficient.
       // Int.
-      if (preg_match('/^-?\d+$/', $parsed_results[$i][$j])) {
-        $result['type'][$j] = 'int';
-        $type_counter['int']++;
+      if (preg_match('/^-?\d+$/', $value)) {
+        $type_counter[$key]['int']++;
       }
       // Float.
-      elseif (preg_match('/^-?(?:\d+|\d*\.\d+)$/', trim($parsed_results[$i][$j]))) {
-        $result['type'][$j] = 'float';
-        $type_counter['float']++;
+      elseif (preg_match('/^-?(?:\d+|\d*\.\d+)$/', trim($value))) {
+        $type_counter[$key]['float']++;
       }
       // Double.
-      elseif (preg_match('/[^0-9][0-9]+(\.[0-9]+)?[^0-9]/', trim($parsed_results[$i][$j]))) {
-        $result['type'][$j] = 'double';
-        $type_counter['double']++;
+      elseif (preg_match('/[^0-9][0-9]+(\.[0-9]+)?[^0-9]/', trim($value))) {
+        $type_counter[$key]['double']++;
       }
       // Datetime.
-      elseif (preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
-              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
-              preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
-              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}/", trim($parsed_results[$i][$j])) ||
-              preg_match("/\d{4}\/\d{2}\/\d{2}/", trim($parsed_results[$i][$j])) ||
-              preg_match("/\d{2}\.\d{2}\.\d{4}/", trim($parsed_results[$i][$j]))) {
-        $result['type'][$j] = 'datetime';
-        $type_counter['datetime']++;
+      elseif (preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}:\d{2}/", trim($value)) ||
+              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}:\d{2}/", trim($value)) ||
+              preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}/", trim($value)) ||
+              preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}/", trim($value)) ||
+              preg_match("/\d{4}\/\d{2}\/\d{2}/", trim($value)) ||
+              preg_match("/\d{2}\.\d{2}\.\d{4}/", trim($value))) {
+        $type_counter[$key]['datetime']++;
       }
       else {
-        $result['type'][$j] = 'text';
-        $type_counter['text']++;
-      }
-    }
-    $max = max($type_counter);
-    if ($max == 0) {
-      $result['type'][$j] = 'varchar';
-    }
-    else {
-      foreach ($type_counter as $key => $value) {
-        if ($value == $max) {
-          $result['type'][$j] = $key;
-        }
+        $type_counter[$key]['bigtext']++;
       }
     }
   }
   foreach ($headers as $key => $header) {
-    $schema[$header] = $result['type'][$key];
+    $max = max($type_counter[$key]);
+    if ($max == 0) {
+      $result['type'][$key] = 'bigtext';
+    }
+    else {
+      foreach ($type_counter[$key] as $type => $count) {
+        if ($count == $max) {
+          $result['type'][$header] = $type;
+        }
+      }
+    }
   }
+  $schema = $result['type'];
   return $schema;
 }
 

@@ -43,12 +43,20 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
 
     $table = $this->table($source, $parser_result);
 
+    $reserved = feeds_flatstore_reserved_words();
     while ($data = $parser_result->shiftItem()) {
       foreach ($data as $label => $value) {
-        $cleaned_data[data_safe_name($label)] = $value;
+        if ($value) {
+          $cleaned_data[data_safe_name($label)] = $value;
+        }
+        // Align results with field if using a reserved word.
+        if (in_array(strtolower(data_safe_name($label)), $reserved)) {
+          unset($cleaned_data[data_safe_name($label)]);
+          $cleaned_data[data_safe_name($label) . '_'] = $value;
+        }
       }
-      $cleaned_data['feed_entity_id'] = $this->feed_nid;
-      if (!isset($data['timestamp'])) {
+      $cleaned_data['feeds_entity_id'] = $this->feed_nid;
+      if (!isset($cleaned_data['timestamp'])) {
         $cleaned_data['timestamp'] = FEEDS_REQUEST_TIME;
       }
 
@@ -121,10 +129,11 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
    * Override parent::configForm().
    */
   public function configForm(&$form_state) {
-    $form['no_config'] = array(
-      '#type' => 'item',
-      '#title' => t('No Configuration Options'),
-      '#markup' => t('This processor does not have any configuration options.'),
+    $form['truncate'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Clear entries upon import'),
+      '#description' => t('Because this creates flat tables there is not a good way of updating individual entries without creating a mapping which is only possible if the import source is the same for every node. This module does not assume that they are. If selected this module will truncate the table and start fresh if a source is being re-imported.'),
+      '#default_value' => $this->config['truncate'],
     );
     return $form;
   }

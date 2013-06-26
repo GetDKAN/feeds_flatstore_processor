@@ -46,9 +46,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
     $reserved = feeds_flatstore_reserved_words();
     while ($data = $parser_result->shiftItem()) {
       foreach ($data as $label => $value) {
-        if ($value) {
-          $cleaned_data[data_safe_name($label)] = $value;
-        }
+        $cleaned_data[data_safe_name($label)] = $value;
         // Align results with field if using a reserved word.
         if (in_array(strtolower(data_safe_name($label)), $reserved)) {
           unset($cleaned_data[data_safe_name($label)]);

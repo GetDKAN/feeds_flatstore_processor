@@ -35,7 +35,7 @@ function feeds_flatstore_processor_form_alter(&$form, &$form_state, $form_id) {
  * Implements hook_feeds_before_import().
  */
 function feeds_flatstore_processor_feeds_before_import(FeedsSource $source) {
-  if ($source->config['truncate']) {
+  if (isset($source->importer->config['processor']['config']['truncate']) && $source->importer->config['processor']['config']['truncate']) {
     // If the import it complete then we are re-importing.
     $progress_importing = $source->progressImporting();
     $count = $source->itemCount();

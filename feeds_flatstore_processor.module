@@ -86,7 +86,7 @@ function feeds_flatstore_processor_table_name($source_id, $entity_id, $prefix = 
 function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
   $table_name = feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
   // If table exists, just return it.
-  if ($table = data_get_table($table_name)) {
+  if ($table = db_table_exists($table_name)) {
     return $table;
   }
   else {
@@ -99,6 +99,8 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     if (isset($title_result['title'])) {
       $title = $title_result['title'];
     }
+    // TODO: FIX.
+    $title = $source->id;
     // If this is a CSV file, get more info.
     if ($source->importer->parser instanceof FeedsCSVParser) {
       $fetcher = get_class($source->importer->fetcher);
@@ -281,6 +283,30 @@ function feeds_flatstore_processor_feeds_plugins() {
       ),
     ),
   );
+}
+
+/**
+ * Determines safe name using reserved words. Should move to data.
+ */
+function feeds_flatstore_processor_safe_name($name) {
+  $map = array(
+    '.' => '_',
+    ':' => '',
+    '/' => '',
+    '-' => '_',
+    ' ' => '_',
+    ',' => '_',
+  );
+  $simple = trim(strtolower(strip_tags($name)));
+  // Limit length to 64 as per http://dev.mysql.com/doc/refman/5.0/en/identifiers.html
+  $simple = substr(strtr($simple, $map), 0, 64);
+
+  $reserved = feeds_flatstore_reserved_words();
+  if (isset($reserved[$simple])) {
+    $simple = $simple . '_';
+  }
+
+  return db_escape_table($simple);
 }
 
 /**

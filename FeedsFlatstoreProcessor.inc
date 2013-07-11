@@ -46,12 +46,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
     $reserved = feeds_flatstore_reserved_words();
     while ($data = $parser_result->shiftItem()) {
       foreach ($data as $label => $value) {
-        $cleaned_data[data_safe_name($label)] = $value;
-        // Align results with field if using a reserved word.
-        if (in_array(strtolower(data_safe_name($label)), $reserved)) {
-          unset($cleaned_data[data_safe_name($label)]);
-          $cleaned_data[data_safe_name($label) . '_'] = $value;
-        }
+        $cleaned_data[feeds_flatstore_processor_safe_name($label)] = $value;
       }
       $cleaned_data['feeds_entity_id'] = $this->feed_nid;
       if (!isset($cleaned_data['timestamp'])) {
@@ -120,6 +115,7 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
       'expire' => FEEDS_EXPIRE_NEVER,
       'mappings' => array(),
       'delete_with_source' => FALSE,
+      'truncate' => FALSE,
     );
   }
 
@@ -137,10 +133,18 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
   }
 
   /**
+   * Override parent::sourceSave().
+   */
+  public function sourceSave(FeedsSource $source) {
+    $source_config = $source->getConfigFor($this);
+    $source->setConfigFor($this, $source_config);
+  }
+
+  /**
    * Reschedule if expiry time changes.
    */
   public function configFormSubmit(&$values) {
-    feeds_reschedule($this->id);
+    parent::configFormSubmit($values);
   }
 
   /**

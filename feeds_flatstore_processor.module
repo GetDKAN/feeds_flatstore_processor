@@ -124,7 +124,6 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     $schema = feeds_flatstore_processsor_base_schema();
     $field_schema = data_build_schema($types);
     feeds_flatstore_clean_reserved_words($field_schema);
-    dpm($field_schema);
     $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
 
     $table = data_create_table($table_name, $schema, $title);

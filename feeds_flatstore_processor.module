@@ -125,10 +125,30 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     $field_schema = data_build_schema($types);
     feeds_flatstore_clean_reserved_words($field_schema);
     $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
+    $driver = "";
+    if ($driver == 'mysql') {
+      $schema['mysql_engine'] = 'MYISAM';
+    }
 
     $table = data_create_table($table_name, $schema, $title);
+    if ($driver == 'mysql' && $fulltext = feeds_flatstore_fulltext_fields($schema)) {
+      Database::getConnection()->query("ALTER TABLE {$table_name} ADD FULLTEXT INDEX $table_name" . "_index ($fulltext)");
+    }
     return $table;
   }
+}
+
+/**
+ * Returns a string of fulltext fields from database schema.
+ */
+function feeds_flatstore_fulltext_fields($schema) {
+  $fulltext = "";
+  foreach ($schema['fields'] as $name => $elements) {
+    if ($elements['type'] == 'char' || $elements['type'] == 'varchar' || $elements['type'] == 'text') {
+      $fulltext = $fulltext ? $fulltext . ',' . $name : $name;
+    }
+  }
+  return $fulltext;
 }
 
 /**

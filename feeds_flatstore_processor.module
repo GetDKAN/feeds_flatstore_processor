@@ -125,6 +125,11 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     $field_schema = data_build_schema($types);
     feeds_flatstore_clean_reserved_words($field_schema);
     $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
+    $x = 0;
+    foreach ($schema['fields'] as $name => $data) {
+      $schema['meta']['fields'][$name]['label'] = $headers[$x];
+      $x++;
+    }
     $driver = "";
     if ($driver == 'mysql') {
       $schema['mysql_engine'] = 'MYISAM';
@@ -321,6 +326,12 @@ function feeds_flatstore_processor_safe_name($name) {
   $simple = trim(strtolower(strip_tags($name)));
   // Limit length to 64 http://dev.mysql.com/doc/refman/5.0/en/identifiers.html
   $simple = substr(strtr($simple, $map), 0, 64);
+
+  if (is_numeric($simple)) {
+    // We need to escape numerics because Drupal's drupal_write_record()
+    // does not properly escape token MYSQL names.
+    $simple = '__num_' . $simple;
+  }
 
   $reserved = feeds_flatstore_reserved_words();
   if (in_array($simple, $reserved)) {

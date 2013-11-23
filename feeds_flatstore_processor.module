@@ -130,7 +130,7 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
       $schema['meta']['fields'][$name]['label'] = $headers[$x];
       $x++;
     }
-    $driver = "";
+    $driver = db_driver();
     if ($driver == 'mysql') {
       $schema['mysql_engine'] = 'MYISAM';
     }

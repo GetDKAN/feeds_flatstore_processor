@@ -252,11 +252,11 @@ function feeds_flatstore_processor_find_columns($parsed_result, $headers = array
       // TODO: Determine if default data sizes are sufficient.
       // Int.
       if (preg_match('/^-?\d+$/', $value)) {
-        $type_counter[$key]['int']++;
+        isset($type_counter[$key]['int']) ? $type_counter[$key]['int']++ : $type_counter[$key]['int'] = 1;
       }
       // Float.
       elseif (preg_match('/^-?(?:\d+|\d*\.\d+)$/', trim($value))) {
-        $type_counter[$key]['float']++;
+        isset($type_counter[$key]['float']) ? $type_counter[$key]['float']++ : $type_counter[$key]['float'] = 1;
       }
       // Datetime.
       elseif (preg_match("/\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}:\d{2}/", trim($value)) ||
@@ -265,15 +265,20 @@ function feeds_flatstore_processor_find_columns($parsed_result, $headers = array
               preg_match("/\d{2}\-\d{2}\-\d{4} \d{2}:\d{2}/", trim($value)) ||
               preg_match("/\d{4}\/\d{2}\/\d{2}/", trim($value)) ||
               preg_match("/\d{2}\.\d{2}\.\d{4}/", trim($value))) {
-        $type_counter[$key]['datetime']++;
+        isset($type_counter[$key]['datetime']) ? $type_counter[$key]['datetime']++ : $type_counter[$key]['datetime'] = 1;
       }
       else {
-        $type_counter[$key]['bigtext']++;
+        isset($type_counter[$key]['bigtext']) ? $type_counter[$key]['bigtext']++ : $type_counter[$key]['bigtext'] = 1;
       }
     }
   }
+  $max = 0;
   foreach ($headers as $key => $header) {
-    $max = max($type_counter[$key]);
+    // Skip empty columns.
+    if (!$header) {
+      NEXT;
+    }
+    $max = isset($type_counter[$key]) ? max($type_counter[$key]) : $max;
 
     if ($max == 0 || !$max) {
       $result['type'][$header] = 'bigtext';
@@ -287,7 +292,7 @@ function feeds_flatstore_processor_find_columns($parsed_result, $headers = array
     }
   }
   $schema = $result['type'];
-  return $schema;
+
 }
 
 /**

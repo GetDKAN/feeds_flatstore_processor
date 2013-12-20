@@ -292,6 +292,7 @@ function feeds_flatstore_processor_find_columns($parsed_result, $headers = array
     }
   }
   $schema = $result['type'];
+  return $schema;
 
 }
 

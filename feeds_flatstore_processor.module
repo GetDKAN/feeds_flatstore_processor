@@ -126,8 +126,9 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     feeds_flatstore_clean_reserved_words($field_schema);
     $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
     $x = 0;
+    $meta = array();
     foreach ($schema['fields'] as $name => $data) {
-      $schema['meta']['fields'][$name]['label'] = $headers[$x];
+      $meta['fields'][$name]['label'] = $headers[$x];
       $x++;
     }
     $driver = db_driver();
@@ -136,6 +137,7 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     }
 
     $table = data_create_table($table_name, $schema, $title);
+    $table->update(array('meta' => $meta));
     if ($driver == 'mysql' && $fulltext = feeds_flatstore_fulltext_fields($schema)) {
       Database::getConnection()->query("ALTER TABLE {$table_name} ADD FULLTEXT INDEX $table_name" . "_index ($fulltext)");
     }

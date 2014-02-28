@@ -105,11 +105,11 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     if ($source->importer->parser instanceof FeedsCSVParser) {
       $fetcher = get_class($source->importer->fetcher);
       $delimiter = $source->config['FeedsCSVParser']['delimiter'];
-      $source = $source->config[$fetcher]['source'];
+      $source_orig = $source->config[$fetcher]['source'];
 
-      if ($source) {
+      if ($source_orig) {
         // This gives us a better range of results for finding data types.
-        $example_data = feeds_flatstore_processor_get_csv_results($source, $delimiter);
+        $example_data = feeds_flatstore_processor_get_csv_results($source_orig, $delimiter);
       }
       else {
         $example_data = $parser_result;
@@ -121,6 +121,7 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     else {
       $types = feeds_flatstore_processor_find_columns($parser_result->items, $limit);
     }
+    drupal_alter('feeds_flatstore_types', $types, $headers, $table_name);
     $schema = feeds_flatstore_processsor_base_schema();
     $field_schema = data_build_schema($types);
     feeds_flatstore_clean_reserved_words($field_schema);
@@ -135,9 +136,18 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     if ($driver == 'mysql') {
       $schema['mysql_engine'] = 'MYISAM';
     }
+    // Add lat/lon fields if 'geolocation' is turned on.
+    $processor = $source->importer->config['processor']['plugin_key'];
+    if (module_exists('geocoder') && isset($source->config['FeedsFlatstoreProcessor']['geolocate']) && $source->config['FeedsFlatstoreProcessor']['geolocate']) {
+      feeds_flatstore_processor_add_geo($schema);
+      $meta['fields']['latitude']['label'] = t('lat');
+      $meta['fields']['longitude']['label'] = t('lon');
+    }
 
     $table = data_create_table($table_name, $schema, $title);
     $table->update(array('meta' => $meta));
+
+    // Adding limited search with default MySQL installs.
     if ($driver == 'mysql' && $fulltext = feeds_flatstore_fulltext_fields($schema)) {
       $fulltext = explode(',', $fulltext);
       // The number of indexes depends on the MySQL version and installation.
@@ -147,6 +157,20 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     }
     return $table;
   }
+}
+
+/**
+ * Adds geolocation fields to schema.
+ */
+function feeds_flatstore_processor_add_geo(&$schema) {
+  $schema['fields']['latitude'] = array(
+    'type' => 'float',
+    'not null' => FALSE,
+  );
+  $schema['fields']['longitude'] = array(
+    'type' => 'float',
+    'not null' => FALSE,
+  );
 }
 
 /**

@@ -148,10 +148,15 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
 
     $db_prefix = $GLOBALS['databases']['default']['default']['prefix'];
     $prefixed = $table_name;
+    
     if ($db_prefix) {
+      if (is_array($db_prefix) && isset($db_prefix['default'])) {
+        $db_prefix = $db_prefix['default'];
+      }
       $table_name = str_replace($db_prefix, "", $table_name);
       $prefixed = $db_prefix . $table_name;
     }
+
     $table = data_create_table($table_name, $schema, $title);
     $table->update(array('meta' => $meta));
 

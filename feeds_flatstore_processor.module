@@ -307,9 +307,11 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
       }
 
       // If a value is a number but with more than 19 chars then is treated as text.
-      if(preg_match('/^-?\d+$/', $value) && strlen($value) > 9 && strlen($value) < 19) {
+      if (preg_match('/^-?\d+$/', $value) && strlen($value) > 9 && strlen($value) < 19) {
         $type_counter[$key]['bigint']++;
-      } elseif (preg_match('/^-?\d+$/', $value) && strlen($value) <= 9) {
+      }
+      // Integer.
+      elseif (preg_match('/^-?\d+$/', $value) && strlen($value) <= 9) {
         $type_counter[$key]['int']++;
       }
 

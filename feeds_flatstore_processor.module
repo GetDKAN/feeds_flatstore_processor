@@ -118,22 +118,21 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
       unset($example_data[0]);
       $types = feeds_flatstore_processor_find_columns($example_data, $limit = 500, $headers);
     }
-    else {
-      $types = feeds_flatstore_processor_find_columns($parser_result->items, $limit);
-    }
     drupal_alter('feeds_flatstore_types', $types, $headers, $table_name);
     $schema = feeds_flatstore_processsor_base_schema();
     $field_schema = data_build_schema($types);
     feeds_flatstore_clean_reserved_words($field_schema);
     $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
+    foreach ($headers as $key => $header) {
+      unset($headers[$key]);
+      $headers[feeds_flatstore_recursive_name($headers, $header)] = feeds_flatstore_recursive_name($headers, $header);
+    }
 
     $x = 0;
     $meta = array();
     foreach ($schema['fields'] as $name => $data) {
-      if (isset($headers[$x])) {
-        $meta['fields'][$name]['label'] = $headers[$x];
-      }
-      $x++;
+      $name = feeds_flatstore_recursive_name($meta['fields'], $name);
+      $meta['fields'][$name]['label'] = $headers[$name];
     }
     $driver = db_driver();
     if ($driver == 'mysql') {

@@ -46,7 +46,9 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
     $reserved = feeds_flatstore_reserved_words();
     while ($data = $parser_result->shiftItem()) {
       foreach ($data as $label => $value) {
-        $cleaned_data[feeds_flatstore_processor_safe_name($label)] = $value;
+        $id = feeds_flatstore_processor_safe_name($label);
+        $id = feeds_flatstore_recursive_name($cleaned_data, $id);
+        $cleaned_data[$id] = $value;
       }
       $cleaned_data['feeds_entity_id'] = $this->feed_nid;
       if (!isset($cleaned_data['timestamp'])) {

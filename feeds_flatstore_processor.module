@@ -362,8 +362,7 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
       $result[$header] = 'bigtext';
     }
   }
-
-  return = $result;
+  return $result;
 }
 
 /**

@@ -45,22 +45,17 @@ class FeedsFlatstoreProcessor extends FeedsProcessor {
 
     $reserved = feeds_flatstore_reserved_words();
     while ($data = $parser_result->shiftItem()) {
-      foreach ($data as $label => $value) {
-        $id = feeds_flatstore_processor_safe_name($label);
-        $id = feeds_flatstore_recursive_name($cleaned_data, $id);
-        $cleaned_data[$id] = $value;
-      }
-      $cleaned_data['feeds_entity_id'] = $this->feed_nid;
-      if (!isset($cleaned_data['timestamp'])) {
-        $cleaned_data['timestamp'] = FEEDS_REQUEST_TIME;
+      $data['feeds_entity_id'] = $this->feed_nid;
+      if (!isset($data['timestamp'])) {
+        $data['timestamp'] = FEEDS_REQUEST_TIME;
       }
       $source_config = $source->getConfigFor($this);
       if (module_exists('geocoder') && $source_config['geolocate']) {
-        $cleaned_data = $this->geocode($cleaned_data, $source_config['geolocate_addresses'], $source_config['geolocater']);
+        $data = $this->geocode($data, $source_config['geolocate_addresses'], $source_config['geolocater']);
       }
 
       // We only save, never update, since there is only a flat table.
-      $this->handler($source)->save($cleaned_data);
+      $this->handler($source)->save($data);
     }
 
   }

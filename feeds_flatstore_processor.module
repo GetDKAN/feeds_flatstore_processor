@@ -123,16 +123,14 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     $field_schema = data_build_schema($types);
     feeds_flatstore_clean_reserved_words($field_schema);
     $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
-    foreach ($headers as $key => $header) {
-      unset($headers[$key]);
-      $headers[feeds_flatstore_recursive_name($headers, $header)] = feeds_flatstore_recursive_name($headers, $header);
-    }
 
     $x = 0;
     $meta = array();
     foreach ($schema['fields'] as $name => $data) {
       $name = feeds_flatstore_recursive_name($meta['fields'], $name);
-      $meta['fields'][$name]['label'] = $headers[$name];
+      $meta['fields'][$name]['label'] = feeds_flatstore_recursive_value($used_headers, $headers[$x]);
+      $used_headers[] = $meta['fields'][$name]['label'];
+      $x++;
     }
     $driver = db_driver();
     if ($driver == 'mysql') {
@@ -174,6 +172,20 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     }
     return $table;
   }
+}
+
+function feeds_flatstore_recursive_value($field_set, $name, $counter = 0) {
+  static $new_name = FALSE;
+  if (in_array($name, $field_set)) {
+    $name = preg_replace('/_.+$/', '', $name);
+    $counter++;
+    $name = $name . '_' . $counter;
+    feeds_flatstore_recursive_value($field_set, $name, $counter);
+  }
+  else {
+    $new_name = $name;
+  }
+  return $new_name;
 }
 
 /**

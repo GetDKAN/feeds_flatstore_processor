@@ -257,31 +257,30 @@ function feeds_flatstore_processsor_base_schema() {
  * feeds result will be only 50 rows by default. This is a relatively
  * inexpensive operation that should only be run once per feed source.
  */
-function feeds_flatstore_processor_get_csv_results($filepath, $separator = ",", $limit = 1000) {
-  static $size = 10000;
-  $handle = fopen($filepath, 'r');
+function feeds_flatstore_processor_get_csv_results($filepath, $separator = ','){
+  static $lsize = 10000;
   ini_set('auto_detect_line_endings', TRUE);
-  if ($handle === FALSE) {
-    drupal_set_message(t('Could not open !filename', array('!filename' => $filepath)));
-    return FALSE;
+  $linecount = 0;
+  $handle = fopen($filepath, "r");
+  $size = ceil(filesize($filepath) / 1024 / 1024);
+  $sample_ratio = 0.317;
+  $skip = ceil($sample_ratio * $size);
+
+  while(!feof($handle)){
+    if(!$linecount || $linecount % $skip === 0) {
+      $line = fgetcsv($handle, $lsize, $separator);
+      $result[] = $line;
+    } else {
+      $line = fgets($handle);
+    }
+    ++$linecount;
   }
 
-  $parsed_results = array();
-  $rowcount = 0;
-  while (($data = fgetcsv($handle, $size, $separator)) !== FALSE) {
-    $result[] = $data;
-    $rowcount++;
-    if ($rowcount > $limit) {
-      break;
-    }
-  }
   fclose($handle);
   return $result;
 }
 
-/**
- * Finds the schema type for values in an array.
- */
+
 /**
  * Finds the schema type for values in an array.
  */

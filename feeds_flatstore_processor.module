@@ -295,7 +295,7 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
   $colcount = count($headers);
 
   // List of possible types, from least to most specific.
-  $types = array('bigtext' => 0, 'datetime' => 0, 'float' => 0, 'int' => 0, 'bigint' => 0);
+  $types = array('bigtext' => 0, 'datetime' => 0, 'decimal' => 0, 'int' => 0, 'bigint' => 0);
   $type_counter = array();
   foreach ($headers as $key => $value) {
     $type_counter[$key]  = $types;
@@ -315,9 +315,9 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
         $type_counter[$key]['int']++;
       }
 
-      // Float.
+      // Decimal.
       elseif (preg_match('/^-?(?:\d+|\d*\.\d+)$/', trim($value))) {
-        $type_counter[$key]['float']++;
+        $type_counter[$key]['decimal']++;
       }
 
       // Datetime.

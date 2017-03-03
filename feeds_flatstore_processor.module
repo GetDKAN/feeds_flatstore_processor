@@ -258,23 +258,28 @@ function feeds_flatstore_processsor_base_schema() {
  * inexpensive operation that should only be run once per feed source.
  */
 function feeds_flatstore_processor_get_csv_results($filepath, $separator = ",", $limit = 1000) {
-  static $size = 10000;
+  static $lsize = 10000;
   $handle = fopen($filepath, 'r');
   ini_set('auto_detect_line_endings', TRUE);
+  $linecount = 0;
   if ($handle === FALSE) {
     drupal_set_message(t('Could not open !filename', array('!filename' => $filepath)));
     return FALSE;
   }
+  $size = ceil(filesize($filepath) / 1024 / 1024);
+  $sample_ratio = 0.317;
+  $skip = ceil($sample_ratio * $size);
 
-  $parsed_results = array();
-  $rowcount = 0;
-  while (($data = fgetcsv($handle, $size, $separator)) !== FALSE) {
-    $result[] = $data;
-    $rowcount++;
-    if ($rowcount > $limit) {
-      break;
+  while(!feof($handle)){
+    if(!$linecount || $linecount % $skip === 0) {
+      $line = fgetcsv($handle, $lsize, $separator);
+      $result[] = $line;
+    } else {
+      $line = fgets($handle);
     }
+    ++$linecount;
   }
+
   fclose($handle);
   return $result;
 }

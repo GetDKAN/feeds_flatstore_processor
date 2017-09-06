@@ -118,20 +118,18 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
       unset($example_data[0]);
       $types = feeds_flatstore_processor_find_columns($example_data, $limit = 500, $headers);
     }
-    else {
-      $types = feeds_flatstore_processor_find_columns($parser_result->items, $limit);
-    }
     drupal_alter('feeds_flatstore_types', $types, $headers, $table_name);
     $schema = feeds_flatstore_processsor_base_schema();
     $field_schema = data_build_schema($types);
     feeds_flatstore_clean_reserved_words($field_schema);
     $schema['fields'] = array_merge($field_schema['fields'], $schema['fields']);
+
     $x = 0;
     $meta = array();
     foreach ($schema['fields'] as $name => $data) {
-      if (isset($headers[$x])) {
-        $meta['fields'][$name]['label'] = $headers[$x];
-      }
+      $name = feeds_flatstore_recursive_name($meta['fields'], $name);
+      $meta['fields'][$name]['label'] = feeds_flatstore_recursive_value($used_headers, $headers[$x]);
+      $used_headers[] = $meta['fields'][$name]['label'];
       $x++;
     }
     $driver = db_driver();
@@ -174,6 +172,37 @@ function feeds_flatstore_processor_table(FeedsSource $source, $parser_result) {
     }
     return $table;
   }
+}
+
+function feeds_flatstore_recursive_value($field_set, $name, $counter = 0) {
+  static $new_name = FALSE;
+  if (in_array($name, $field_set)) {
+    $name = preg_replace('/_.+$/', '', $name);
+    $counter++;
+    $name = $name . '_' . $counter;
+    feeds_flatstore_recursive_value($field_set, $name, $counter);
+  }
+  else {
+    $new_name = $name;
+  }
+  return $new_name;
+}
+
+/**
+ * Increments until name not part of fields_set.
+ */
+function feeds_flatstore_recursive_name($field_set, $name, $counter = 0) {
+  static $new_name = FALSE;
+  if (isset($field_set[$name])) {
+    $name = preg_replace('/_.+$/', '', $name);
+    $counter++;
+    $name = $name . '_' . $counter;
+    feeds_flatstore_recursive_name($field_set, $name, $counter);
+  }
+  else {
+    $new_name = $name;
+  }
+  return $new_name;
 }
 
 /**
@@ -339,7 +368,10 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
     }
   }
   $max = 0;
+  $result = array();
   foreach ($headers as $key => $header) {
+    $header = feeds_flatstore_processor_safe_name($header);
+    $header = feeds_flatstore_recursive_name($result, $header);
     // Skip empty columns.
     if (!$header) {
       NEXT;
@@ -348,16 +380,13 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
     if ($max != $limit) {
       // From the types that were encountered take the first one in the list.
       $type = array_keys(array_filter($type_counter[$key]));
-      $result['type'][$header] = $type[0];
+      $result[$header] = $type[0];
     }
     else {
-      $result['type'][$header] = 'bigtext';
+      $result[$header] = 'bigtext';
     }
   }
-
-  $schema = $result['type'];
-  return $schema;
-
+  return $result;
 }
 
 /**
@@ -392,10 +421,13 @@ function feeds_flatstore_processor_safe_name($name) {
     '-' => '_',
     ' ' => '_',
     ',' => '_',
+    '#' => '_',
+    '%' => '_',
   );
   $simple = trim(strtolower(strip_tags($name)));
   // Limit length to 64 http://dev.mysql.com/doc/refman/5.0/en/identifiers.html
-  $simple = substr(strtr($simple, $map), 0, 64);
+  // Leave a couple of extra in case same name.
+  $simple = substr(strtr($simple, $map), 0, 60);
 
   if (is_numeric($simple)) {
     // We need to escape numerics because Drupal's drupal_write_record()

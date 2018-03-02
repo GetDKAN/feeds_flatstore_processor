@@ -33,6 +33,12 @@ function feeds_flatstore_processor_form_alter(&$form, &$form_state, $form_id) {
 
 /**
  * Implements hook_feeds_before_import().
+ *
+ * Because this creates flat tables there is not a good way of updating
+ * individual entries without creating a mapping which is only possible if
+ * the import source is the same for every node. This module does not assume
+ * that they are. If selected this module will truncate the table and
+ * start fresh if a source is being re-imported.
  */
 function feeds_flatstore_processor_feeds_before_import(FeedsSource $source) {
   if (isset($source->importer->config['processor']['config']['truncate']) && $source->importer->config['processor']['config']['truncate']) {
@@ -41,6 +47,8 @@ function feeds_flatstore_processor_feeds_before_import(FeedsSource $source) {
     $count = $source->itemCount();
     if ($progress_importing == FEEDS_BATCH_COMPLETE && $count) {
       $table_name = feeds_flatstore_processor_table_name($source->id, $source->feed_nid);
+      $message = t('Re-importing the file so truncating the %table table.', array('%table' => $table_name));
+      watchdog('feeds_flatstore_processor', $message, 'WATCHDOG_NOTICE');
       db_truncate($table_name)->execute();
     }
   }
@@ -50,7 +58,7 @@ function feeds_flatstore_processor_feeds_before_import(FeedsSource $source) {
  * Implements hook_feeds_after_import().
  */
 function feeds_flatstore_processor_feeds_after_import(FeedsSource $source) {
-  // Unschedule for import if completed. TODO: only if periodic import on.
+  // Unschedule import if completed. TODO: only if periodic import on.
   $progress_importing = $source->progressImporting();
   $count = $source->itemCount();
   if ($progress_importing == FEEDS_BATCH_COMPLETE && $count) {
@@ -59,7 +67,9 @@ function feeds_flatstore_processor_feeds_after_import(FeedsSource $source) {
       'type' => $source->id,
       'id' => $source->feed_nid,
     );
-    // Remove: JobScheduler::get('feeds_source_import')->remove($job);
+    $message = t('Finished importing, removing %nid from the queue.', array('%nid' => $source->feed_nid));
+    watchdog('feeds_flatstore_processor', $message, 'WATCHDOG_NOTICE');
+    JobScheduler::get('feeds_source_import')->remove($job);
   }
 }
 
@@ -206,7 +216,7 @@ function feeds_flatstore_fulltext_fields($schema) {
 /**
  * Cleans reserved words for mysql.
  *
- * See: http://dev.mysql.com/doc/refman/4.1/en/reserved-words.html
+ * See: http://dev.mysql.com/doc/refman/4.1/en/reserved-words.html.
  */
 function feeds_flatstore_clean_reserved_words(&$schema) {
   foreach ($schema['fields'] as $label => $value) {
@@ -286,9 +296,6 @@ function feeds_flatstore_processor_get_csv_results($filepath, $separator = ",", 
 /**
  * Finds the schema type for values in an array.
  */
-/**
- * Finds the schema type for values in an array.
- */
 function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers = array()) {
   $rowcount = count($parsed_result);
   if (!$headers) {
@@ -299,10 +306,16 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
   $colcount = count($headers);
 
   // List of possible types, from least to most specific.
-  $types = array('bigtext' => 0, 'datetime' => 0, 'float' => 0, 'bigint' => 0, 'int' => 0);
+  $types = array(
+    'bigtext' => 0,
+    'datetime' => 0,
+    'float' => 0,
+    'bigint' => 0,
+    'int' => 0,
+  );
   $type_counter = array();
   foreach ($headers as $key => $value) {
-    $type_counter[$key]  = $types;
+    $type_counter[$key] = $types;
   }
   foreach ($parsed_result as $row) {
     foreach ($row as $key => $value) {
@@ -310,7 +323,7 @@ function feeds_flatstore_processor_find_columns($parsed_result, $limit, $headers
         continue;
       }
 
-      // If a value is a number but with more than 19 chars then is treated as text.
+      // If value is a number with more than 19 chars then is treated as text.
       if (preg_match('/^-?\d+$/', $value) && strlen($value) > 9 && strlen($value) < 19) {
         $type_counter[$key]['bigint']++;
       }
